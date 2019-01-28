@@ -6,6 +6,8 @@ module HigherOrderFns
 # particularly map[!]/broadcast[!] for SparseVectors and SparseMatrixCSCs at present.
 import Base: map, map!, broadcast, copy, copyto!
 
+import ..SparseArrays: numrows, numcols
+
 using Base: front, tail, to_shape
 using ..SparseArrays: SparseVector, SparseMatrixCSC, AbstractSparseVector,
                       AbstractSparseMatrix, AbstractSparseArray, indtype, nnz, nzrange,
@@ -109,12 +111,10 @@ const SpBroadcasted2{Style<:SPVM,Axes,F,Args<:Tuple{SparseVecOrMat,SparseVecOrMa
 # as n-by-one sparse matrices which, though technically incorrect, is how broacast[!] views
 # sparse vectors in practice.
 @inline numrows(A::SparseVector) = A.n
-@inline numrows(A::SparseMatrixCSC) = A.m
 @inline numcols(A::SparseVector) = 1
-@inline numcols(A::SparseMatrixCSC) = A.n
 # numrows and numcols respectively yield size(A, 1) and size(A, 2), but avoid a branch
 @inline columns(A::SparseVector) = 1
-@inline columns(A::SparseMatrixCSC) = 1:A.n
+@inline columns(A::SparseMatrixCSC) = 1:numcols(A)
 @inline colrange(A::SparseVector, j) = 1:length(A.nzind)
 @inline colrange(A::SparseMatrixCSC, j) = nzrange(A, j)
 @inline colstartind(A::SparseVector, j) = one(indtype(A))
@@ -214,9 +214,9 @@ end
 @inline _all_args_isa(t::Tuple{Broadcasted,Vararg{Any}}, ::Type{T}) where T = _all_args_isa(t[1].args, T) & _all_args_isa(tail(t), T)
 @inline _densennz(shape::NTuple{1}) = shape[1]
 @inline _densennz(shape::NTuple{2}) = shape[1] * shape[2]
-_maxnnzfrom(shape::NTuple{1}, A) = nnz(A) * div(shape[1], A.n)
+_maxnnzfrom(shape::NTuple{1}, A::SparseVector) = nnz(A) * div(shape[1], A.n)
 _maxnnzfrom(shape::NTuple{2}, A::SparseVector) = nnz(A) * div(shape[1], A.n) * shape[2]
-_maxnnzfrom(shape::NTuple{2}, A::SparseMatrixCSC) = nnz(A) * div(shape[1], A.m) * div(shape[2], A.n)
+_maxnnzfrom(shape::NTuple{2}, A::SparseMatrixCSC) = nnz(A) * div(shape[1], numrows(A)) * div(shape[2], numcols(A))
 @inline _maxnnzfrom_each(shape, ::Tuple{}) = ()
 @inline _maxnnzfrom_each(shape, As) = (_maxnnzfrom(shape, first(As)), _maxnnzfrom_each(shape, tail(As))...)
 @inline _unchecked_maxnnzbcres(shape, As::Tuple) = min(_densennz(shape), sum(_maxnnzfrom_each(shape, As)))
@@ -277,18 +277,19 @@ function _map_notzeropres!(f::Tf, fillvalue, C::SparseVecOrMat, A::SparseVecOrMa
 end
 # helper functions for these methods and some of those below
 @inline _densecoloffsets(A::SparseVector) = 0
-@inline _densecoloffsets(A::SparseMatrixCSC) = 0:A.m:(A.m*(A.n - 1))
+#@inline _densecoloffsets(A::SparseMatrixCSC) = 0:numrows(A):(numrows(A)*(numcols(A)-1))
+@inline _densecoloffsets(A::SparseMatrixCSC) = 0:numrows(A):length(A)-numrows(A)
 function _densestructure!(A::SparseVector)
     expandstorage!(A, A.n)
     copyto!(A.nzind, 1:A.n)
     return A
 end
 function _densestructure!(A::SparseMatrixCSC)
-    nnzA = A.m * A.n
+    nnzA = numrows(A) * numcols(A)
     expandstorage!(A, nnzA)
-    copyto!(A.colptr, 1:A.m:(nnzA + 1))
+    copyto!(A.colptr, 1:numrows(A):(nnzA + 1))
     for k in _densecoloffsets(A)
-        copyto!(A.rowval, k + 1, 1:A.m)
+        copyto!(A.rowval, k + 1, 1:numrows(A))
     end
     return A
 end

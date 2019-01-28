@@ -863,8 +863,8 @@ end
 
 function Sparse{Tv}(A::SparseMatrixCSC, stype::Integer) where Tv<:VTypes
     ## Check length of input. This should never fail but see #20024
-    if length(A.colptr) <= A.n
-        throw(ArgumentError("length of colptr must be at least size(A,2) + 1 = $(A.n + 1) but was $(length(A.colptr))"))
+    if length(A.colptr) <= A.dims[2]
+        throw(ArgumentError("length of colptr must be at least size(A,2) + 1 = $(A.dims[2] + 1) but was $(length(A.colptr))"))
     end
     if nnz(A) > length(A.rowval)
         throw(ArgumentError("length of rowval is $(length(A.rowval)) but value of colptr requires length to be at least $(nnz(A))"))
@@ -873,9 +873,9 @@ function Sparse{Tv}(A::SparseMatrixCSC, stype::Integer) where Tv<:VTypes
         throw(ArgumentError("length of nzval is $(length(A.nzval)) but value of colptr requires length to be at least $(nnz(A))"))
     end
 
-    o = allocate_sparse(A.m, A.n, nnz(A), true, true, stype, Tv)
+    o = allocate_sparse(numrows(A), numcols(A), nnz(A), true, true, stype, Tv)
     s = unsafe_load(pointer(o))
-    for i = 1:(A.n + 1)
+    for i = 1:(numcols(A) + 1)
         unsafe_store!(s.p, A.colptr[i] - 1, i)
     end
     for i = 1:nnz(A)
@@ -885,7 +885,7 @@ function Sparse{Tv}(A::SparseMatrixCSC, stype::Integer) where Tv<:VTypes
         # Need to remove any non real elements in the diagonal because, in contrast to
         # BLAS/LAPACK these are not ignored by CHOLMOD. If even tiny imaginary parts are
         # present CHOLMOD will fail with a non-positive definite/zero pivot error.
-        for j = 1:A.n
+        for j = 1:numcols(A)
             for ip = A.colptr[j]:A.colptr[j + 1] - 1
                 v = A.nzval[ip]
                 unsafe_store!(s.x, A.rowval[ip] == j ? Complex(real(v)) : v, ip)

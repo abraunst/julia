@@ -354,8 +354,8 @@ end
 
 # convert SparseMatrixCSC to SparseVector
 function SparseVector{Tv,Ti}(s::SparseMatrixCSC{Tv,Ti}) where {Tv,Ti<:Integer}
-    size(s, 2) == 1 || throw(ArgumentError("The input argument must have a single-column."))
-    SparseVector(s.m, s.rowval, s.nzval)
+    length(s.dims) == 2 && size(s, 2) == 1 || throw(ArgumentError("The input argument must have a single-column."))
+    SparseVector(numrows(s), s.rowval, s.nzval)
 end
 
 SparseVector{Tv}(s::SparseMatrixCSC{Tv,Ti}) where {Tv,Ti} = SparseVector{Tv,Ti}(s)
@@ -479,7 +479,7 @@ function copyto!(A::SparseVector, B::SparseMatrixCSC)
     @assert length(A.nzind) >= length(B.rowval)
     maximum(B.colptr)-1 <= length(B.rowval) || throw(BoundsError())
     @inbounds for col=1:length(B.colptr)-1
-        offsetA = (col - 1) * B.m
+        offsetA = (col - 1) * numrows(B)
         while ptr <= B.colptr[col+1]-1
             A.nzind[ptr] = B.rowval[ptr] + offsetA
             ptr += 1
@@ -527,7 +527,7 @@ function getindex(x::SparseMatrixCSC, ::Colon, j::Integer)
     checkbounds(x, :, j)
     r1 = convert(Int, x.colptr[j])
     r2 = convert(Int, x.colptr[j+1]) - 1
-    SparseVector(x.m, x.rowval[r1:r2], x.nzval[r1:r2])
+    SparseVector(numrows(x), x.rowval[r1:r2], x.nzval[r1:r2])
 end
 
 function getindex(x::SparseMatrixCSC, I::AbstractUnitRange, j::Integer)
@@ -544,7 +544,7 @@ end
 # In the general case, we piggy back upon SparseMatrixCSC's optimized solution
 @inline function getindex(A::SparseMatrixCSC, I::AbstractVector, J::Integer)
     M = A[I, [J]]
-    SparseVector(M.m, M.rowval, M.nzval)
+    SparseVector(numrows(M), M.rowval, M.nzval)
 end
 
 # Row slices
@@ -595,11 +595,11 @@ function _logical_index(A::SparseMatrixCSC{Tv}, I::AbstractArray{Bool}) where Tv
     c = 1
     rowB = 1
 
-    @inbounds for col in 1:A.n
+    @inbounds for col in 1:numcols(A)
         r1 = colptrA[col]
         r2 = colptrA[col+1]-1
 
-        for row in 1:A.m
+        for row in 1:numrows(A)
             if I[row, col]
                 while (r1 <= r2) && (rowvalA[r1] < row)
                     r1 += 1

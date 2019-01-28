@@ -23,7 +23,7 @@ const ORDERING_BESTAMD = Int32(9) # try COLAMD and AMD; pick best#
 # tried.  If there is a high fill-in with AMD then try METIS(A'A) and take
 # the best of AMD and METIS. METIS is not tried if it isn't installed.
 
-using SparseArrays: SparseMatrixCSC, nnz
+using SparseArrays: SparseMatrixCSC, nnz, numcols, numrows
 using ..SuiteSparse.CHOLMOD
 using ..SuiteSparse.CHOLMOD: change_stype!, free!
 
@@ -157,7 +157,7 @@ function LinearAlgebra.qr(A::SparseMatrixCSC{Tv}; tol = _default_tol(A)) where {
     R_ = SparseMatrixCSC(Sparse(R[]))
     return QRSparse(SparseMatrixCSC(Sparse(H[])),
                     vec(Array(CHOLMOD.Dense(HTau[]))),
-                    SparseMatrixCSC(min(size(A)...), R_.n, R_.colptr, R_.rowval, R_.nzval),
+                    SparseMatrixCSC(min(size(A)...), numcols(R_), R_.colptr, R_.rowval, R_.nzval),
                     p, hpinv)
 end
 

@@ -31,8 +31,8 @@ end
 # In matrix-vector multiplication, the correct orientation of the vector is assumed.
 
 function mul!(C::StridedVecOrMat, A::SparseMatrixCSC, B::StridedVecOrMat, α::Number, β::Number)
-    A.n == size(B, 1) || throw(DimensionMismatch())
-    A.m == size(C, 1) || throw(DimensionMismatch())
+    numcols(A) == size(B, 1) || throw(DimensionMismatch())
+    numrows(A) == size(C, 1) || throw(DimensionMismatch())
     size(B, 2) == size(C, 2) || throw(DimensionMismatch())
     nzv = A.nzval
     rv = A.rowval
@@ -40,7 +40,7 @@ function mul!(C::StridedVecOrMat, A::SparseMatrixCSC, B::StridedVecOrMat, α::Nu
         β != 0 ? rmul!(C, β) : fill!(C, zero(eltype(C)))
     end
     for k = 1:size(C, 2)
-        @inbounds for col = 1:A.n
+        @inbounds for col = 1:numcols(A)
             αxj = α*B[col,k]
             for j = A.colptr[col]:(A.colptr[col + 1] - 1)
                 C[rv[j], k] += nzv[j]*αxj
@@ -50,14 +50,14 @@ function mul!(C::StridedVecOrMat, A::SparseMatrixCSC, B::StridedVecOrMat, α::Nu
     C
 end
 *(A::SparseMatrixCSC{TA,S}, x::StridedVector{Tx}) where {TA,S,Tx} =
-    (T = promote_type(TA, Tx); mul!(similar(x, T, A.m), A, x, one(T), zero(T)))
+    (T = promote_type(TA, Tx); mul!(similar(x, T, numrows(A)), A, x, one(T), zero(T)))
 *(A::SparseMatrixCSC{TA,S}, B::StridedMatrix{Tx}) where {TA,S,Tx} =
-    (T = promote_type(TA, Tx); mul!(similar(B, T, (A.m, size(B, 2))), A, B, one(T), zero(T)))
+    (T = promote_type(TA, Tx); mul!(similar(B, T, (numrows(A), size(B, 2))), A, B, one(T), zero(T)))
 
 function mul!(C::StridedVecOrMat, adjA::Adjoint{<:Any,<:SparseMatrixCSC}, B::StridedVecOrMat, α::Number, β::Number)
     A = adjA.parent
-    A.n == size(C, 1) || throw(DimensionMismatch())
-    A.m == size(B, 1) || throw(DimensionMismatch())
+    numcols(A) == size(C, 1) || throw(DimensionMismatch())
+    numrows(A) == size(B, 1) || throw(DimensionMismatch())
     size(B, 2) == size(C, 2) || throw(DimensionMismatch())
     nzv = A.nzval
     rv = A.rowval
@@ -65,7 +65,7 @@ function mul!(C::StridedVecOrMat, adjA::Adjoint{<:Any,<:SparseMatrixCSC}, B::Str
         β != 0 ? rmul!(C, β) : fill!(C, zero(eltype(C)))
     end
     for k = 1:size(C, 2)
-        @inbounds for col = 1:A.n
+        @inbounds for col = 1:numcols(A)
             tmp = zero(eltype(C))
             for j = A.colptr[col]:(A.colptr[col + 1] - 1)
                 tmp += adjoint(nzv[j])*B[rv[j],k]
@@ -76,14 +76,14 @@ function mul!(C::StridedVecOrMat, adjA::Adjoint{<:Any,<:SparseMatrixCSC}, B::Str
     C
 end
 *(adjA::Adjoint{<:Any,<:SparseMatrixCSC{TA,S}}, x::StridedVector{Tx}) where {TA,S,Tx} =
-    (A = adjA.parent; T = promote_type(TA, Tx); mul!(similar(x, T, A.n), adjoint(A), x, one(T), zero(T)))
+    (A = adjA.parent; T = promote_type(TA, Tx); mul!(similar(x, T, numcols(A)), adjoint(A), x, one(T), zero(T)))
 *(adjA::Adjoint{<:Any,<:SparseMatrixCSC{TA,S}}, B::StridedMatrix{Tx}) where {TA,S,Tx} =
-    (A = adjA.parent; T = promote_type(TA, Tx); mul!(similar(B, T, (A.n, size(B, 2))), adjoint(A), B, one(T), zero(T)))
+    (A = adjA.parent; T = promote_type(TA, Tx); mul!(similar(B, T, (numcols(A), size(B, 2))), adjoint(A), B, one(T), zero(T)))
 
 function mul!(C::StridedVecOrMat, transA::Transpose{<:Any,<:SparseMatrixCSC}, B::StridedVecOrMat, α::Number, β::Number)
     A = transA.parent
-    A.n == size(C, 1) || throw(DimensionMismatch())
-    A.m == size(B, 1) || throw(DimensionMismatch())
+    numcols(A) == size(C, 1) || throw(DimensionMismatch())
+    numrows(A) == size(B, 1) || throw(DimensionMismatch())
     size(B, 2) == size(C, 2) || throw(DimensionMismatch())
     nzv = A.nzval
     rv = A.rowval
@@ -91,7 +91,7 @@ function mul!(C::StridedVecOrMat, transA::Transpose{<:Any,<:SparseMatrixCSC}, B:
         β != 0 ? rmul!(C, β) : fill!(C, zero(eltype(C)))
     end
     for k = 1:size(C, 2)
-        @inbounds for col = 1:A.n
+        @inbounds for col = 1:numcols(A)
             tmp = zero(eltype(C))
             for j = A.colptr[col]:(A.colptr[col + 1] - 1)
                 tmp += transpose(nzv[j])*B[rv[j],k]
@@ -102,9 +102,9 @@ function mul!(C::StridedVecOrMat, transA::Transpose{<:Any,<:SparseMatrixCSC}, B:
     C
 end
 *(transA::Transpose{<:Any,<:SparseMatrixCSC{TA,S}}, x::StridedVector{Tx}) where {TA,S,Tx} =
-    (A = transA.parent; T = promote_type(TA, Tx); mul!(similar(x, T, A.n), transpose(A), x, one(T), zero(T)))
+    (A = transA.parent; T = promote_type(TA, Tx); mul!(similar(x, T, numcols(A)), transpose(A), x, one(T), zero(T)))
 *(transA::Transpose{<:Any,<:SparseMatrixCSC{TA,S}}, B::StridedMatrix{Tx}) where {TA,S,Tx} =
-    (A = transA.parent; T = promote_type(TA, Tx); mul!(similar(B, T, (A.n, size(B, 2))), transpose(A), B, one(T), zero(T)))
+    (A = transA.parent; T = promote_type(TA, Tx); mul!(similar(B, T, (numcols(A), size(B, 2))), transpose(A), B, one(T), zero(T)))
 
 # For compatibility with dense multiplication API. Should be deleted when dense multiplication
 # API is updated to follow BLAS API.
@@ -117,11 +117,11 @@ mul!(C::StridedVecOrMat, transA::Transpose{<:Any,<:SparseMatrixCSC}, B::StridedV
 
 function (*)(X::StridedMatrix{TX}, A::SparseMatrixCSC{TvA,TiA}) where {TX,TvA,TiA}
     mX, nX = size(X)
-    nX == A.m || throw(DimensionMismatch())
-    Y = zeros(promote_type(TX,TvA), mX, A.n)
+    nX == numrows(A) || throw(DimensionMismatch())
+    Y = zeros(promote_type(TX,TvA), mX, numcols(A))
     rowval = A.rowval
     nzval = A.nzval
-    @inbounds for multivec_row=1:mX, col = 1:A.n, k=A.colptr[col]:(A.colptr[col+1]-1)
+    @inbounds for multivec_row=1:mX, col = 1:numcols(A), k=A.colptr[col]:(A.colptr[col+1]-1)
         Y[multivec_row, col] += X[multivec_row, rowval[k]] * nzval[k]
     end
     Y
@@ -749,8 +749,8 @@ end
 
 function rdiv!(A::SparseMatrixCSC{T}, D::Diagonal{T}) where T
     dd = D.diag
-    if (k = length(dd)) ≠ A.n
-        throw(DimensionMismatch("size(A, 2)=$(A.n) should be size(D, 1)=$k"))
+    if (k = length(dd)) ≠ numcols(A)
+        throw(DimensionMismatch("size(A, 2)=$(numcols(A)) should be size(D, 1)=$k"))
     end
     nonz = nonzeros(A)
     @inbounds for j in 1:k
@@ -772,8 +772,8 @@ rdiv!(A::SparseMatrixCSC{T}, transD::Transpose{<:Any,<:Diagonal{T}}) where {T} =
 
 function ldiv!(D::Diagonal{T}, A::SparseMatrixCSC{T}) where {T}
     # require_one_based_indexing(A)
-    if A.m != length(D.diag)
-        throw(DimensionMismatch("diagonal matrix is $(length(D.diag)) by $(length(D.diag)) but right hand side has $(A.m) rows"))
+    if numrows(A) != length(D.diag)
+        throw(DimensionMismatch("diagonal matrix is $(length(D.diag)) by $(length(D.diag)) but right hand side has $(numrows(A)) rows"))
     end
     nonz = nonzeros(A)
     Arowval = A.rowval
@@ -781,7 +781,7 @@ function ldiv!(D::Diagonal{T}, A::SparseMatrixCSC{T}) where {T}
     for i=1:length(b)
         iszero(b[i]) && throw(SingularException(i))
     end
-    @inbounds for col = 1:A.n, p = A.colptr[col]:(A.colptr[col + 1] - 1)
+    @inbounds for col = 1:numcols(A), p = A.colptr[col]:(A.colptr[col + 1] - 1)
         nonz[p] = b[Arowval[p]] \ nonz[p]
     end
     A
