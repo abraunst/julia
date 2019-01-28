@@ -82,7 +82,7 @@ julia> nnz(A)
 """
 nnz(S::SparseArrayCSC)         = Int(S.colptr[end] - 1)
 nnz(S::ReshapedArray{T,1,<:SparseMatrixCSC}) where T = nnz(parent(S))
-count(pred, S::SparseMatrixCSC) = count(pred, nzvalview(S)) + pred(zero(eltype(S)))*(length(S) - nnz(S))
+count(pred, S::SparseArrayCSC) = count(pred, nzvalview(S)) + pred(zero(eltype(S)))*(length(S) - nnz(S))
 
 """
     nonzeros(A)
@@ -108,7 +108,7 @@ julia> nonzeros(A)
  2
 ```
 """
-nonzeros(S::SparseMatrixCSC) = S.nzval
+nonzeros(S::SparseArrayCSC) = S.nzval
 nonzeros(S::SparseMatrixCSCView)  = nonzeros(S.parent)
 
 """
@@ -134,7 +134,7 @@ julia> rowvals(A)
  3
 ```
 """
-rowvals(S::SparseMatrixCSC) = S.rowval
+rowvals(S::SparseArrayCSC) = S.rowval
 rowvals(S::SparseMatrixCSCView) = rowvals(S.parent)
 
 """
@@ -156,10 +156,10 @@ column. In conjunction with [`nonzeros`](@ref) and
        end
     end
 """
-nzrange(S::SparseMatrixCSC, col::Integer) = S.colptr[col]:(S.colptr[col+1]-1)
+nzrange(S::SparseArrayCSC, col::Integer) = S.colptr[col]:(S.colptr[col+1]-1)
 nzrange(S::SparseMatrixCSCView, col::Integer) = nzrange(S.parent, S.indices[2][col])
 
-function Base.show(io::IO, ::MIME"text/plain", S::SparseMatrixCSC)
+function Base.show(io::IO, ::MIME"text/plain", S::SparseArrayCSC)
     xnnz = nnz(S)
     print(io, numrows(S), "×", numcols(S), " ", typeof(S), " with ", xnnz, " stored ",
               xnnz == 1 ? "entry" : "entries")
@@ -169,8 +169,8 @@ function Base.show(io::IO, ::MIME"text/plain", S::SparseMatrixCSC)
     end
 end
 
-Base.show(io::IO, S::SparseMatrixCSC) = Base.show(convert(IOContext, io), S::SparseMatrixCSC)
-function Base.show(io::IOContext, S::SparseMatrixCSC)
+Base.show(io::IO, S::SparseArrayCSC) = Base.show(convert(IOContext, io), S)
+function Base.show(io::IOContext, S::SparseArrayCSC)
     if nnz(S) == 0
         return show(io, MIME("text/plain"), S)
     end
@@ -184,10 +184,12 @@ function Base.show(io::IOContext, S::SparseMatrixCSC)
     end
 
     ioc = IOContext(io, :compact => true)
-    pad = ndigits(max(numrows(S), numcols(S)))
+    pad = ndigits.(size(S))
 
+    R = CartesianIndices(S.dims[2:end])
     function _format_line(r, col)
-        print(ioc, "\n  [", rpad(S.rowval[r], pad), ", ", lpad(col, pad), "]  =  ")
+        t = Tuple(R[col])
+        print(ioc, "\n  [", rpad(S.rowval[r], pad[1]), [", $(lpad(t[i], pad[i+1]))" for i in 1:length(t)]..., "]  =  ")
         if isassigned(S.nzval, Int(r))
             show(ioc, S.nzval[r])
         else
@@ -1351,9 +1353,10 @@ function _sparse_findprevnz(m::SparseMatrixCSC, i::Integer)
 end
 
 
-function sparse_sortedlinearindices!(I::Vector{Ti}, V::Vector, m::Int, n::Int) where Ti
+function sparse_sortedlinearindices!(I::Vector{Ti}, V::Vector, dims::Int...) where Ti
     length(I) == length(V) || throw(ArgumentError("I and V should have the same length"))
     nnz = length(V)
+    m, n = dims[1], prod(dims[2:end])
     colptr = Vector{Ti}(undef, n + 1)
     j, colm = 1, 0
     @inbounds for col = 1:n+1
@@ -1364,7 +1367,7 @@ function sparse_sortedlinearindices!(I::Vector{Ti}, V::Vector, m::Int, n::Int) w
         j <= nnz && (I[j] += colm)
         colm += m
     end
-    return SparseMatrixCSC(m, n, colptr, I, V)
+    return SparseArrayCSC(dims, colptr, I, V)
 end
 
 """
@@ -1388,24 +1391,32 @@ julia> sprand(Float64, 3, 0.75)
   [3]  =  0.298614
 ```
 """
-function sprand(r::AbstractRNG, m::Integer, n::Integer, density::AbstractFloat, rfn::Function, ::Type{T} = eltype(rfn(r, 1))) where T
-    m, n = Int(m), Int(n)
-    (m < 0 || n < 0) && throw(ArgumentError("invalid Array dimensions"))
+function sprand(r::AbstractRNG, dims::Tuple, density::AbstractFloat, rfn::Function, ::Type{T} = eltype(rfn(r, 1))) where T
+    dims = Int.(dims)
+    all(dims .> 0) || throw(ArgumentError("invalid Array dimensions"))
     0 <= density <= 1 || throw(ArgumentError("$density not in [0,1]"))
-    I = randsubseq(r, 1:(m*n), density)
-    return sparse_sortedlinearindices!(I, convert(Vector{T}, rfn(r,length(I))), m, n)
+    I = randsubseq(r, 1:prod(dims), density)
+    return sparse_sortedlinearindices!(I, convert(Vector{T}, rfn(r,length(I))), dims...)
 end
+
+function sprand(r::AbstractRNG, m::Integer, n::Integer, density::AbstractFloat, rfn::Function, ::Type{T} = eltype(rfn(r, 1))) where T
+    sprand(r, (m,n), density, rfn, T)
+end
+
+
 
 sprand(m::Integer, n::Integer, density::AbstractFloat, rfn::Function, ::Type{T} = eltype(rfn(1))) where T = sprand(GLOBAL_RNG,m,n,density,(r, i) -> rfn(i))
 
 truebools(r::AbstractRNG, n::Integer) = fill(true, n)
 
 sprand(m::Integer, n::Integer, density::AbstractFloat) = sprand(GLOBAL_RNG,m,n,density)
+sprand(dims::Dims, density::AbstractFloat) = sprand(GLOBAL_RNG, dims, density, rand)
 
 sprand(r::AbstractRNG, m::Integer, n::Integer, density::AbstractFloat) = sprand(r,m,n,density,rand,Float64)
 sprand(r::AbstractRNG, ::Type{T}, m::Integer, n::Integer, density::AbstractFloat) where {T} = sprand(r,m,n,density,(r, i) -> rand(r, T, i), T)
 sprand(r::AbstractRNG, ::Type{Bool}, m::Integer, n::Integer, density::AbstractFloat) = sprand(r,m,n,density, truebools, Bool)
 sprand(::Type{T}, m::Integer, n::Integer, density::AbstractFloat) where {T} = sprand(GLOBAL_RNG, T, m, n, density)
+
 
 """
     sprandn([rng][,Type],m[,n],p::AbstractFloat)
