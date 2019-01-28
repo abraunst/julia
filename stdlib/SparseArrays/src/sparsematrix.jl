@@ -472,9 +472,9 @@ julia> sparse(A)
   [3, 3]  =  1.0
 ```
 """
-sparse(A::AbstractMatrix{Tv}) where {Tv} = convert(SparseMatrixCSC{Tv,Int}, A)
+sparse(A::AbstractArray{Tv,N}) where {Tv,N} = convert(SparseArrayCSC{Tv,Int,N}, A)
 
-sparse(S::SparseMatrixCSC) = copy(S)
+sparse(S::SparseArrayCSC) = copy(S)
 
 """
     sparse(I, J, V,[ m, n, combine])
@@ -1513,28 +1513,28 @@ sparse(s::UniformScaling, m::Integer, n::Integer) = sparse(s, Dims((m, n)))
 
 # TODO: More appropriate location?
 conj!(A::SparseMatrixCSC) = (@inbounds broadcast!(conj, A.nzval, A.nzval); A)
-(-)(A::SparseMatrixCSC) = SparseMatrixCSC(numrows(A), numcols(A), copy(A.colptr), copy(A.rowval), map(-, A.nzval))
+(-)(A::SparseArrayCSC) = SparseArrayCSC(size(A), copy(A.colptr), copy(A.rowval), map(-, A.nzval))
 
 # the rest of real, conj, imag are handled correctly via AbstractArray methods
-conj(A::SparseMatrixCSC{<:Complex}) =
-    SparseMatrixCSC(numrows(A), numcols(A), copy(A.colptr), copy(A.rowval), conj(A.nzval))
-imag(A::SparseMatrixCSC{Tv,Ti}) where {Tv<:Real,Ti} = spzeros(Tv, Ti, numrows(A), numcols(A))
+conj(A::SparseArrayCSC{<:Complex}) =
+    SparseArrayCSC(size(A), copy(A.colptr), copy(A.rowval), conj(A.nzval))
+imag(A::SparseArrayCSC{Tv,Ti}) where {Tv<:Real,Ti} = spzeros(Tv, Ti, size(A))
 
 ## Binary arithmetic and boolean operators
-(+)(A::SparseMatrixCSC, B::SparseMatrixCSC) = map(+, A, B)
-(-)(A::SparseMatrixCSC, B::SparseMatrixCSC) = map(-, A, B)
+(+)(A::SparseArrayCSC, B::SparseArrayCSC) = map(+, A, B)
+(-)(A::SparseArrayCSC, B::SparseArrayCSC) = map(-, A, B)
 
-(+)(A::SparseMatrixCSC, B::Array) = Array(A) + B
-(+)(A::Array, B::SparseMatrixCSC) = A + Array(B)
-(-)(A::SparseMatrixCSC, B::Array) = Array(A) - B
-(-)(A::Array, B::SparseMatrixCSC) = A - Array(B)
+(+)(A::SparseArrayCSC, B::Array) = Array(A) + B
+(+)(A::Array, B::SparseArrayCSC) = A + Array(B)
+(-)(A::SparseArrayCSC, B::Array) = Array(A) - B
+(-)(A::Array, B::SparseArrayCSC) = A - Array(B)
 
 ## full equality
-function ==(A1::SparseMatrixCSC, A2::SparseMatrixCSC)
+function ==(A1::SparseArrayCSC, A2::SparseArrayCSC)
     size(A1) != size(A2) && return false
     vals1, vals2 = nonzeros(A1), nonzeros(A2)
     rows1, rows2 = rowvals(A1), rowvals(A2)
-    m, n = size(A1)
+    m, n = numrows(A1), numcols(A1)
     @inbounds for i = 1:n
         nz1,nz2 = nzrange(A1,i), nzrange(A2,i)
         j1,j2 = first(nz1), first(nz2)
