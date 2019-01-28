@@ -665,7 +665,7 @@ end
 function getindex(A::SparseMatrixCSC{Tv,Ti}, I::AbstractVector) where {Tv,Ti}
     require_one_based_indexing(A, I)
     szA = size(A)
-    nA = szA[1]*szA[2]
+    nA = length(A)
     colptrA = A.colptr
     rowvalA = A.rowval
     nzvalA = A.nzval
