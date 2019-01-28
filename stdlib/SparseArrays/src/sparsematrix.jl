@@ -5,6 +5,7 @@
 # Assumes that row values in rowval for each column are sorted
 #      issorted(rowval[colptr[i]:(colptr[i+1]-1)]) == true
 
+
 """
     SparseMatrixCSC{Tv,Ti<:Integer} <: AbstractSparseMatrix{Tv,Ti}
 
@@ -13,29 +14,34 @@ Matrix type for storing sparse matrices in the
 of constructing SparseMatrixCSC is through the [`sparse`](@ref) function.
 See also [`spzeros`](@ref), [`spdiagm`](@ref) and [`sprand`](@ref).
 """
-struct SparseMatrixCSC{Tv,Ti<:Integer} <: AbstractSparseMatrix{Tv,Ti}
-    m::Int                  # Number of rows
-    n::Int                  # Number of columns
-    colptr::Vector{Ti}      # Column i is in colptr[i]:(colptr[i+1]-1)
-    rowval::Vector{Ti}      # Row indices of stored values
-    nzval::Vector{Tv}       # Stored values, typically nonzeros
+struct SparseArrayCSC{Tv,Ti<:Integer,N} <: AbstractSparseArray{Tv,Ti,N}
+    dims::Dims{N}
+    colptr::Vector{Ti}   # Column i is in colptr[i]:(colptr[i+1]-1)
+    rowval::Vector{Ti}   # Row indices of stored values
+    nzval::Vector{Tv}    # Stored values, typically nonzeros
+    m::Ti
+    n::Ti
 
-    function SparseMatrixCSC{Tv,Ti}(m::Integer, n::Integer, colptr::Vector{Ti}, rowval::Vector{Ti},
-                                    nzval::Vector{Tv}) where {Tv,Ti<:Integer}
-        @noinline throwsz(str, lbl, k) =
-            throw(ArgumentError("number of $str ($lbl) must be ≥ 0, got $k"))
-        m < 0 && throwsz("rows", 'm', m)
-        n < 0 && throwsz("columns", 'n', n)
-        new(Int(m), Int(n), colptr, rowval, nzval)
+    function SparseArrayCSC{Tv,Ti,N}(dims::Dims{N}, colptr::Vector{Ti}, rowval::Vector{Ti}, nzval::Vector{Tv}) where {Tv,Ti<:Integer,N}
+        all(dims .>= 0) || throw(ArgumentError("Wrong dimensions $dims"))
+        length(colptr) == prod(dims[2:end])+1 || throw(ArgumentError("row colptr argument"))
+        new{Tv,Ti,N}(dims, colptr, rowval, nzval, dims[1], dims[2])
     end
 end
-function SparseMatrixCSC(m::Integer, n::Integer, colptr::Vector, rowval::Vector, nzval::Vector)
-    Tv = eltype(nzval)
-    Ti = promote_type(eltype(colptr), eltype(rowval))
-    SparseMatrixCSC{Tv,Ti}(m, n, colptr, rowval, nzval)
-end
 
-size(S::SparseMatrixCSC) = (S.m, S.n)
+
+SparseArrayCSC(dims::Dims{N}, colptr::Vector{Ti}, rowval::Vector{Ti}, nzval::Vector{Tv}) where {Tv,Ti<:Integer,N} = SparseArrayCSC{Tv,Ti,N}(dims,colptr,rowval,nzval)
+
+
+const SparseMatrixCSC{Tv, Ti<:Integer} = SparseArrayCSC{Tv, Ti, 2}
+
+SparseMatrixCSC{Tv,Ti}(m::Integer, n::Integer, colptr::Vector{Ti}, rowval::Vector{Ti}, nzval::Vector{Tv}) where {Tv,Ti<:Integer} = SparseArrayCSC{Tv,Ti,2}((Int(m),Int(n)), colptr, rowval, nzval)
+SparseMatrixCSC(m::Integer, n::Integer, colptr::Vector{Ti}, rowval::Vector{Ti}, nzval::Vector{Tv}) where {Tv,Ti<:Integer} = SparseMatrixCSC{Tv,Ti}((Int(m),Int(n)), colptr, rowval, nzval)
+
+
+
+
+size(S::SparseMatrixCSC) = S.dims
 
 # Define an alias for views of a SparseMatrixCSC which include all rows and a unit range of the columns.
 # Also define a union of SparseMatrixCSC and this view since many methods can be defined efficiently for
