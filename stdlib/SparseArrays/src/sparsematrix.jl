@@ -19,8 +19,6 @@ struct SparseArrayCSC{Tv,Ti<:Integer,N} <: AbstractSparseArray{Tv,Ti,N}
     colptr::Vector{Ti}   # Column i is in colptr[i]:(colptr[i+1]-1)
     rowval::Vector{Ti}   # Row indices of stored values
     nzval::Vector{Tv}    # Stored values, typically nonzeros
-    # m::Ti
-    # n::Ti
 
     function SparseArrayCSC{Tv,Ti,N}(dims::Dims{N}, colptr::Vector{Ti}, rowval::Vector{Ti}, nzval::Vector{Tv}) where {Tv,Ti<:Integer,N}
         all(dims .>= 0) || throw(ArgumentError("Wrong dimensions $dims"))
@@ -41,7 +39,7 @@ SparseMatrixCSC(m::Integer, n::Integer, colptr::Vector{Ti}, rowval::Vector{Ti}, 
 
 
 
-size(S::SparseMatrixCSC) = S.dims
+size(S::SparseArrayCSC) = S.dims
 
 # Define an alias for views of a SparseMatrixCSC which include all rows and a unit range of the columns.
 # Also define a union of SparseMatrixCSC and this view since many methods can be defined efficiently for
@@ -82,9 +80,9 @@ julia> nnz(A)
 3
 ```
 """
-nnz(S::SparseMatrixCSC)         = Int(S.colptr[numcols(S) + 1] - 1)
+nnz(S::SparseArrayCSC)         = Int(S.colptr[end] - 1)
 nnz(S::ReshapedArray{T,1,<:SparseMatrixCSC}) where T = nnz(parent(S))
-count(pred, S::SparseMatrixCSC) = count(pred, nzvalview(S)) + pred(zero(eltype(S)))*(prod(size(S)) - nnz(S))
+count(pred, S::SparseMatrixCSC) = count(pred, nzvalview(S)) + pred(zero(eltype(S)))*(length(S) - nnz(S))
 
 """
     nonzeros(A)
@@ -1452,15 +1450,15 @@ julia> spzeros(Float32, 4)
 4-element SparseVector{Float32,Int64} with 0 stored entries
 ```
 """
-spzeros(m::Integer, n::Integer) = spzeros(Float64, m, n)
-spzeros(::Type{Tv}, m::Integer, n::Integer) where {Tv} = spzeros(Tv, Int, m, n)
-function spzeros(::Type{Tv}, ::Type{Ti}, m::Integer, n::Integer) where {Tv, Ti}
-    ((m < 0) || (n < 0)) && throw(ArgumentError("invalid Array dimensions"))
-    SparseMatrixCSC(m, n, fill(one(Ti), n+1), Vector{Ti}(), Vector{Tv}())
+spzeros(dims::Integer...) = spzeros(Float64, dims...)
+spzeros(::Type{Tv}, dims::Integer...) where {Tv} = spzeros(Tv, Int, dims...)
+function spzeros(::Type{Tv}, ::Type{Ti}, dims::Integer...) where {Tv, Ti}
+    all(dims .>= 0) || throw(ArgumentError("Wrong dimensions $dims"))
+    SparseArrayCSC(dims, fill(one(Ti), prod(dims[2:end])+1), Vector{Ti}(), Vector{Tv}())
 end
 # de-splatting variant
-function spzeros(::Type{Tv}, ::Type{Ti}, sz::Tuple{Integer,Integer}) where {Tv, Ti}
-    spzeros(Tv, Ti, sz[1], sz[2])
+function spzeros(::Type{Tv}, ::Type{Ti}, sz::Tuple) where {Tv, Ti}
+    spzeros(Tv, Ti, sz...)
 end
 
 import Base._one
