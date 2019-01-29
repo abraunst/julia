@@ -1464,7 +1464,7 @@ julia> spzeros(Float32, 4)
 spzeros(dims::Integer...) = spzeros(Float64, dims...)
 spzeros(::Type{Tv}, dims::Integer...) where {Tv} = spzeros(Tv, Int, dims...)
 function spzeros(::Type{Tv}, ::Type{Ti}, dims::Integer...) where {Tv, Ti}
-    all(dims .>= 0) || throw(ArgumentError("Wrong dimensions $dims"))
+    all(dims .>= 0) || throw(ArgumentError("Invalid matrix size $dims"))
     SparseArrayCSC(dims, fill(one(Ti), prod(dims[2:end])+1), Vector{Ti}(), Vector{Tv}())
 end
 # de-splatting variant
