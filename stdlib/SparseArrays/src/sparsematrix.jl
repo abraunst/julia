@@ -2356,7 +2356,7 @@ function _setindex_scalar!(A::SparseArrayCSC{Tv,Ti}, _v, I::TT) where {Tv,Ti<:In
     return A
 end
 
-function Base.fill!(V::SubArray{Tv, <:Any, <:SparseMatrixCSC{Tv,Ti,N}, Tuple{Vararg{Union{Integer, AbstractVector{<:Integer}},N}}}, x) where {Tv,Ti,N}
+function Base.fill!(V::SubArray{Tv, <:Any, <:SparseArrayCSC{Tv,Ti,N}, Tuple{Vararg{Union{Integer, AbstractVector{<:Integer}},N}}}, x) where {Tv,Ti,N}
     A = V.parent
     II = V.indices
     any(isempty.(II)) || return A
