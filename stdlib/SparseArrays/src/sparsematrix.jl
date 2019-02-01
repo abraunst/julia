@@ -2329,15 +2329,13 @@ getindex(A::SparseArrayCSC, ::Colon, J1::Index, J2::Index, JJ::Index...) = getin
 ## setindex!
 
 # dispatch helper for #29034
-setindex!(A::SparseMatrixCSC, _v, _i::Integer, _j::Integer) = _setindex_scalar!(A, _v, _i, _j)
+setindex!(A::SparseArrayCSC, _v, I::Integer...) = _setindex_scalar!(A, _v, I)
 
-function _setindex_scalar!(A::SparseMatrixCSC{Tv,Ti}, _v, _i::Integer, _j::Integer) where {Tv,Ti<:Integer}
+function _setindex_scalar!(A::SparseArrayCSC{Tv,Ti}, _v, I::TT) where {Tv,Ti<:Integer,TT<:NTuple{N,Integer} where N}
+    checkbounds(A, I...)
     v = convert(Tv, _v)
-    i = convert(Ti, _i)
-    j = convert(Ti, _j)
-    if !((1 <= i <= numrows(A)) & (1 <= j <= numcols(A)))
-        throw(BoundsError(A, (i,j)))
-    end
+    i = convert(Ti, I[1])
+    j = LinearIndices(A.dims[2:end])[I[2:end]...]
     coljfirstk = Int(A.colptr[j])
     coljlastk = Int(A.colptr[j+1] - 1)
     searchk = searchsortedfirst(A.rowval, i, coljfirstk, coljlastk, Base.Order.Forward)
@@ -2358,27 +2356,29 @@ function _setindex_scalar!(A::SparseMatrixCSC{Tv,Ti}, _v, _i::Integer, _j::Integ
     return A
 end
 
-function Base.fill!(V::SubArray{Tv, <:Any, <:SparseMatrixCSC, Tuple{Vararg{Union{Integer, AbstractVector{<:Integer}},2}}}, x) where Tv
+function Base.fill!(V::SubArray{Tv, <:Any, <:SparseMatrixCSC{Tv,Ti,N}, Tuple{Vararg{Union{Integer, AbstractVector{<:Integer}},N}}}, x) where {Tv,Ti,N}
     A = V.parent
-    I, J = V.indices
-    if isempty(I) || isempty(J); return A; end
+    II = V.indices
+    any(isempty.(II)) || return A
     # lt=≤ to check for strict sorting
-    if !issorted(I, lt=≤); I = sort!(unique(I)); end
-    if !issorted(J, lt=≤); J = sort!(unique(J)); end
-    if (I[1] < 1 || I[end] > numrows(A)) || (J[1] < 1 || J[end] > numcols(A))
-        throw(BoundsError(A, (I, J)))
+    for I in II
+        if !issorted(I, lt=≤); I = sort!(unique(I)); end
     end
+
+    all(1 ≤ I[1] && I[end] ≤ n for (I,n)=zip(II,A.dims)) || throw(BoundsError(A, II))
+    J = LinearIndices(A.dims[2:end])[II[2:end]...]
     if x == 0
-        _spsetz_setindex!(A, I, J)
+        _spsetz_setindex!(A, II[1], J)
     else
-        _spsetnz_setindex!(A, convert(Tv, x), I, J)
+        _spsetnz_setindex!(A, convert(Tv, x), II[1], J)
     end
 end
+
 """
 Helper method for immediately preceding setindex! method. For all (i,j) such that i in I and
 j in J, assigns zero to A[i,j] if A[i,j] is a presently-stored entry, and otherwise does nothing.
 """
-function _spsetz_setindex!(A::SparseMatrixCSC,
+function _spsetz_setindex!(A::SparseArrayCSC,
         I::Union{Integer, AbstractVector{<:Integer}}, J::Union{Integer, AbstractVector{<:Integer}})
     require_one_based_indexing(A, I, J)
     lengthI = length(I)
@@ -2523,10 +2523,10 @@ function _spsetnz_setindex!(A::SparseMatrixCSC{Tv}, x::Tv,
 end
 
 # Nonscalar A[I,J] = B: Convert B to a SparseMatrixCSC of the appropriate shape first
-_to_same_csc(::SparseMatrixCSC{Tv, Ti}, V::AbstractMatrix, I...) where {Tv,Ti} = convert(SparseMatrixCSC{Tv,Ti}, V)
-_to_same_csc(::SparseMatrixCSC{Tv, Ti}, V::AbstractVector, I...) where {Tv,Ti} = convert(SparseMatrixCSC{Tv,Ti}, reshape(V, map(length, I)))
+_to_same_csc(::SparseArrayCSC{Tv, Ti, N}, V::AbstractArray, I...) where {Tv,Ti,N} = convert(SparseArrayCSC{Tv,Ti,N}, V)
+_to_same_csc(::SparseArrayCSC{Tv, Ti, N}, V::AbstractVector, I...) where {Tv,Ti,N} = convert(SparseArrayCSC{Tv,Ti,N}, reshape(V, map(length, I)))
 
-setindex!(A::SparseMatrixCSC{Tv}, B::AbstractVecOrMat, I::Integer, J::Integer) where {Tv} = _setindex_scalar!(A, B, I, J)
+setindex!(A::SparseArrayCSC{Tv}, B::AbstractArray, I::Integer...) where {Tv} = _setindex_scalar!(A, B, I...)
 
 function setindex!(A::SparseMatrixCSC{Tv,Ti}, V::AbstractVecOrMat, Ix::Union{Integer, AbstractVector{<:Integer}, Colon}, Jx::Union{Integer, AbstractVector{<:Integer}, Colon}) where {Tv,Ti<:Integer}
     require_one_based_indexing(A, V, Ix, Jx)

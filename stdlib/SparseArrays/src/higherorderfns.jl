@@ -277,7 +277,6 @@ function _map_notzeropres!(f::Tf, fillvalue, C::SparseVecOrMat, A::SparseVecOrMa
 end
 # helper functions for these methods and some of those below
 @inline _densecoloffsets(A::SparseVector) = 0
-#@inline _densecoloffsets(A::SparseMatrixCSC) = 0:numrows(A):(numrows(A)*(numcols(A)-1))
 @inline _densecoloffsets(A::SparseMatrixCSC) = 0:numrows(A):length(A)-numrows(A)
 function _densestructure!(A::SparseVector)
     expandstorage!(A, A.n)
