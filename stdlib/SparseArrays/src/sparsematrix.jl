@@ -51,13 +51,13 @@ const SparseMatrixCSCView{Tv,Ti} =
         Tuple{Base.Slice{Base.OneTo{Int}},I}} where {I<:AbstractUnitRange}
 const SparseMatrixCSCUnion{Tv,Ti} = Union{SparseMatrixCSC{Tv,Ti}, SparseMatrixCSCView{Tv,Ti}}
 
-getcolptr(S::SparseMatrixCSC)     = S.colptr
+getcolptr(S::SparseArrayCSC)     = S.colptr
 getcolptr(S::SparseMatrixCSCView) = view(S.parent.colptr, first(axes(S, 2)):(last(axes(S, 2)) + 1))
-getrowval(S::SparseMatrixCSC)     = S.rowval
+getrowval(S::SparseArrayCSC)     = S.rowval
 getrowval(S::SparseMatrixCSCView) = S.parent.rowval
-getnzval( S::SparseMatrixCSC)     = S.nzval
+getnzval( S::SparseArrayCSC)     = S.nzval
 getnzval( S::SparseMatrixCSCView) = S.parent.nzval
-nzvalview(S::SparseMatrixCSC)     = view(S.nzval, 1:nnz(S))
+nzvalview(S::SparseArrayCSC)     = view(S.nzval, 1:nnz(S))
 numrows(S::SparseArrayCSC)        = S.dims[1]
 numcols(S::SparseArrayCSC)        = length(S.colptr) - 1
 
@@ -81,7 +81,7 @@ julia> nnz(A)
 ```
 """
 nnz(S::SparseArrayCSC)         = Int(S.colptr[end] - 1)
-nnz(S::ReshapedArray{T,1,<:SparseMatrixCSC}) where T = nnz(parent(S))
+nnz(S::ReshapedArray{T,1,<:SparseArrayCSC}) where T = nnz(parent(S))
 count(pred, S::SparseArrayCSC) = count(pred, nzvalview(S)) + pred(zero(eltype(S)))*(length(S) - nnz(S))
 
 """
@@ -226,18 +226,18 @@ end
 
 ## Reshape
 
-function sparse_compute_reshaped_colptr_and_rowval(colptrS::Vector{Ti}, rowvalS::Vector{Ti},
-                                                   mS::Int, nS::Int, colptrA::Vector{Ti},
-                                                   rowvalA::Vector{Ti}, mA::Int, nA::Int) where Ti
+function sparse_compute_reshaped_colptr_and_rowval!(colptrS::Vector{Ti}, rowvalS::Vector{Ti}, dimsS::Dims,
+                                                   colptrA::Vector{Ti}, rowvalA::Vector{Ti}, dimsA::Dims) where Ti
+    mS, nS = dimsS[1], prod(dimsS[2:end])
+    mA, nA = dimsA[1], length(colptrA) - 1
     lrowvalA = length(rowvalA)
-    maxrowvalA = (lrowvalA > 0) ? maximum(rowvalA) : zero(Ti)
-    ((length(colptrA) == (nA+1)) && (maximum(colptrA) <= (lrowvalA+1)) && (maxrowvalA <= mA)) || throw(BoundsError())
+    maxrowvalA = lrowvalA > 0 ? maximum(rowvalA) : zero(Ti)
+    (length(colptrA) == nA + 1 && maximum(colptrA) <= lrowvalA && maxrowvalA <= mA) || throw(BoundsError())
 
     colptrS[1] = 1
     colA = 1
     colS = 1
     ptr = 1
-
     @inbounds while colA <= nA
         offsetA = (colA - 1) * mA
         while ptr <= colptrA[colA+1]-1
@@ -260,18 +260,18 @@ function sparse_compute_reshaped_colptr_and_rowval(colptrS::Vector{Ti}, rowvalS:
     end
 end
 
-function copy(ra::ReshapedArray{<:Any,2,<:SparseMatrixCSC})
-    mS,nS = size(ra)
+function copy(ra::ReshapedArray{<:Any,N,<:SparseArrayCSC{Tv, Ti,N}}) where {Tv, Ti, N}
+    dimsS = size(ra)
     a = parent(ra)
-    mA,nA = size(a)
+    dimsA = size(a)
     numnz = nnz(a)
-    colptr = similar(a.colptr, nS+1)
+    colptr = similar(a.colptr, prod(dimsS[2:end]) + 1)
     rowval = similar(a.rowval)
     nzval = copy(a.nzval)
 
-    sparse_compute_reshaped_colptr_and_rowval(colptr, rowval, mS, nS, a.colptr, a.rowval, mA, nA)
+    sparse_compute_reshaped_colptr_and_rowval!(colptr, rowval, dimsS, a.colptr, a.rowval, dimsA)
 
-    return SparseMatrixCSC(mS, nS, colptr, rowval, nzval)
+    return SparseArrayCSC(dimsS, colptr, rowval, nzval)
 end
 
 ## Alias detection and prevention
@@ -281,8 +281,8 @@ Base.unaliascopy(S::SparseMatrixCSC) = typeof(S)(numrows(S), numcols(S), unalias
 
 ## Constructors
 
-copy(S::SparseMatrixCSC) =
-    SparseMatrixCSC(numrows(S), numcols(S), copy(S.colptr), copy(S.rowval), copy(S.nzval))
+copy(S::SparseArrayCSC{Tv,Ti,N}) where {Tv,Ti,N} =
+    SparseArrayCSC{Tv,Ti,N}(numrows(S), numcols(S), copy(S.colptr), copy(S.rowval), copy(S.nzval))
 
 function copyto!(A::SparseMatrixCSC, B::SparseMatrixCSC)
     # If the two matrices have the same length then all the
@@ -296,7 +296,7 @@ function copyto!(A::SparseMatrixCSC, B::SparseMatrixCSC)
             copyto!(A.rowval, B.rowval)
         else
             # This is like a "reshape B into A".
-            sparse_compute_reshaped_colptr_and_rowval(A.colptr, A.rowval, numrows(A), numcols(A), B.colptr, B.rowval, numrows(B), numcols(B))
+            sparse_compute_reshaped_colptr_and_rowval!(A.colptr, A.rowval, numrows(A), numcols(A), B.colptr, B.rowval, numrows(B), numcols(B))
         end
     else
         length(A) >= length(B) || throw(BoundsError())
@@ -326,7 +326,7 @@ function copyto!(A::SparseMatrixCSC, B::SparseMatrixCSC)
         @inbounds for i in 2:length(A.colptr)
             A.colptr[i] += nnzB - lastmodptrA
         end
-        sparse_compute_reshaped_colptr_and_rowval(A.colptr, A.rowval, numrows(A), lastmodcolA-1, B.colptr, B.rowval, numrows(B), numcols(B))
+        sparse_compute_reshaped_colptr_and_rowval!(A.colptr, A.rowval, numrows(A), lastmodcolA-1, B.colptr, B.rowval, numrows(B), numcols(B))
     end
     copyto!(A.nzval, B.nzval)
     return A
@@ -384,14 +384,14 @@ end
 SparseMatrixCSC(M::Matrix) = sparse(M)
 SparseMatrixCSC(M::AbstractMatrix{Tv}) where {Tv} = SparseMatrixCSC{Tv,Int}(M)
 SparseMatrixCSC{Tv}(M::AbstractMatrix{Tv}) where {Tv} = SparseMatrixCSC{Tv,Int}(M)
-function SparseMatrixCSC{Tv,Ti}(M::AbstractMatrix) where {Tv,Ti}
+function SparseArrayCSC{Tv,Ti,N}(M::AbstractArray{Tv2,N}) where {Tv,Tv2,Ti,N}
     require_one_based_indexing(M)
     I = Ti[]
     V = Tv[]
     i = 0
     for v in M
         i += 1
-        if !iszero(v)
+        if v != 0
             push!(I, i)
             push!(V, v)
         end
@@ -399,26 +399,6 @@ function SparseMatrixCSC{Tv,Ti}(M::AbstractMatrix) where {Tv,Ti}
     return sparse_sortedlinearindices!(I, V, size(M)...)
 end
 
-function SparseMatrixCSC{Tv,Ti}(M::StridedMatrix) where {Tv,Ti}
-    nz = count(t -> t != 0, M)
-    colptr = zeros(Ti, size(M, 2) + 1)
-    nzval = Vector{Tv}(undef, nz)
-    rowval = Vector{Ti}(undef, nz)
-    colptr[1] = 1
-    cnt = 1
-    @inbounds for j in 1:size(M, 2)
-        for i in 1:size(M, 1)
-            v = M[i, j]
-            if v != 0
-                rowval[cnt] = i
-                nzval[cnt] = v
-                cnt += 1
-            end
-        end
-        colptr[j+1] = cnt
-    end
-    return SparseMatrixCSC(size(M, 1), size(M, 2), colptr, rowval, nzval)
-end
 SparseMatrixCSC(M::Adjoint{<:Any,<:SparseMatrixCSC}) = copy(M)
 SparseMatrixCSC(M::Transpose{<:Any,<:SparseMatrixCSC}) = copy(M)
 SparseMatrixCSC{Tv}(M::Adjoint{Tv,SparseMatrixCSC{Tv}}) where {Tv} = copy(M)
