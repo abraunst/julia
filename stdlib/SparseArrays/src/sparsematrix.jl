@@ -226,13 +226,11 @@ end
 
 ## Reshape
 
-function sparse_compute_reshaped_colptr_and_rowval!(colptrS::Vector{Ti}, rowvalS::Vector{Ti}, dimsS::Dims,
-                                                   colptrA::Vector{Ti}, rowvalA::Vector{Ti}, dimsA::Dims) where Ti
-    mS, nS = dimsS[1], prod(dimsS[2:end])
-    mA, nA = dimsA[1], length(colptrA) - 1
+function sparse_compute_reshaped_colptr_and_rowval!(colptrS::Vector{Ti}, rowvalS::Vector{Ti}, mS::Int, nS::Int,
+                                                   colptrA::Vector{Ti}, rowvalA::Vector{Ti}, mA::Int, nA::Int) where Ti
     lrowvalA = length(rowvalA)
     maxrowvalA = lrowvalA > 0 ? maximum(rowvalA) : zero(Ti)
-    (length(colptrA) == nA + 1 && maximum(colptrA) <= lrowvalA && maxrowvalA <= mA) || throw(BoundsError())
+    (length(colptrA) == nA + 1 && maximum(colptrA) <= lrowvalA + 1 && maxrowvalA <= mA) || throw(BoundsError())
 
     colptrS[1] = 1
     colA = 1
@@ -261,17 +259,17 @@ function sparse_compute_reshaped_colptr_and_rowval!(colptrS::Vector{Ti}, rowvalS
 end
 
 function copy(ra::ReshapedArray{<:Any,N,<:SparseArrayCSC{Tv, Ti,N}}) where {Tv, Ti, N}
-    dimsS = size(ra)
+    mS, nS = size(ra)[1], prod(size(ra)[2:end])
     a = parent(ra)
-    dimsA = size(a)
+    mA, nA = size(a)[1], prod(size(a)[2:end])
     numnz = nnz(a)
-    colptr = similar(a.colptr, prod(dimsS[2:end]) + 1)
+    colptr = similar(a.colptr, nS + 1)
     rowval = similar(a.rowval)
     nzval = copy(a.nzval)
 
-    sparse_compute_reshaped_colptr_and_rowval!(colptr, rowval, dimsS, a.colptr, a.rowval, dimsA)
+    sparse_compute_reshaped_colptr_and_rowval!(colptr, rowval, mS, nS, a.colptr, a.rowval, mA, nA)
 
-    return SparseArrayCSC(dimsS, colptr, rowval, nzval)
+    return SparseArrayCSC(size(ra), colptr, rowval, nzval)
 end
 
 ## Alias detection and prevention
@@ -284,7 +282,7 @@ Base.unaliascopy(S::SparseMatrixCSC) = typeof(S)(numrows(S), numcols(S), unalias
 copy(S::SparseArrayCSC{Tv,Ti,N}) where {Tv,Ti,N} =
     SparseArrayCSC{Tv,Ti,N}(numrows(S), numcols(S), copy(S.colptr), copy(S.rowval), copy(S.nzval))
 
-function copyto!(A::SparseMatrixCSC, B::SparseMatrixCSC)
+function copyto!(A::SparseArrayCSC, B::SparseArrayCSC)
     # If the two matrices have the same length then all the
     # elements in A will be overwritten.
     if length(A) == length(B)
@@ -296,7 +294,7 @@ function copyto!(A::SparseMatrixCSC, B::SparseMatrixCSC)
             copyto!(A.rowval, B.rowval)
         else
             # This is like a "reshape B into A".
-            sparse_compute_reshaped_colptr_and_rowval!(A.colptr, A.rowval, numrows(A), numcols(A), B.colptr, B.rowval, numrows(B), numcols(B))
+            sparse_compute_reshaped_colptr_and_rowval!(A.colptr, A.rowval, A.dims[1], prod(A.dims[2:end]), B.colptr, B.rowval, B.dims[1], prod(B.dims[2:end]))
         end
     else
         length(A) >= length(B) || throw(BoundsError())
@@ -326,7 +324,7 @@ function copyto!(A::SparseMatrixCSC, B::SparseMatrixCSC)
         @inbounds for i in 2:length(A.colptr)
             A.colptr[i] += nnzB - lastmodptrA
         end
-        sparse_compute_reshaped_colptr_and_rowval!(A.colptr, A.rowval, numrows(A), lastmodcolA-1, B.colptr, B.rowval, numrows(B), numcols(B))
+        sparse_compute_reshaped_colptr_and_rowval!(A.colptr, A.rowval, A.dims[1], lastmodcolA - 1, B.colptr, B.rowval, A.dims[1], prod(B.dims[2:end]))
     end
     copyto!(A.nzval, B.nzval)
     return A
@@ -2343,8 +2341,8 @@ function Base.fill!(V::SubArray{Tv, <:Any, <:SparseArrayCSC{Tv,Ti,N}, Tuple{Vara
     II = V.indices
     any(isempty.(II)) && return A
     # lt=≤ to check for strict sorting
-    for I in II
-        if !issorted(I, lt=≤); I = sort!(unique(I)); end
+    for i in 1:length(II)
+        if !issorted(II[i], lt=≤); II[i] = sort!(unique(II[i])); end
     end
 
     all(1 ≤ I[1] && I[end] ≤ n for (I,n)=zip(II,A.dims)) || throw(BoundsError(A, II))
@@ -2510,15 +2508,7 @@ _to_same_csc(::SparseArrayCSC{Tv, Ti, N}, V::AbstractVector, I...) where {Tv,Ti,
 
 setindex!(A::SparseArrayCSC{Tv}, B::AbstractArray, I::Integer...) where {Tv} = _setindex_scalar!(A, B, I...)
 
-
-
-function setindex!(A::SparseArrayCSC{Tv,Ti,N}, V::AbstractVecOrMat, II::Union{Integer, AbstractVector{<:Integer}, Colon}...) where {Tv,Ti<:Integer,N}
-
-
-end
-
-
-function setindex_two!(A::SparseArrayCSC{Tv,Ti}, V::AbstractVecOrMat, Ix::Union{Integer, AbstractVector{<:Integer}, Colon}, Jx::Union{Integer, AbstractVector{<:Integer}, Colon}) where {Tv,Ti<:Integer}
+function setindex!(A::SparseArrayCSC{Tv,Ti}, V::AbstractVecOrMat, Ix::Union{Integer, AbstractVector{<:Integer}, Colon}, Jx::Union{Integer, AbstractVector{<:Integer}, Colon}) where {Tv,Ti<:Integer}
     require_one_based_indexing(A, V, Ix, Jx)
     (I, J) = Base.ensure_indexable(to_indices(A, (Ix, Jx)))
     checkbounds(A, I, J)
