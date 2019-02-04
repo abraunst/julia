@@ -324,7 +324,7 @@ function copyto!(A::SparseArrayCSC, B::SparseArrayCSC)
         @inbounds for i in 2:length(A.colptr)
             A.colptr[i] += nnzB - lastmodptrA
         end
-        sparse_compute_reshaped_colptr_and_rowval!(A.colptr, A.rowval, A.dims[1], lastmodcolA - 1, B.colptr, B.rowval, A.dims[1], prod(B.dims[2:end]))
+        sparse_compute_reshaped_colptr_and_rowval!(A.colptr, A.rowval, A.dims[1], lastmodcolA - 1, B.colptr, B.rowval, B.dims[1], prod(B.dims[2:end]))
     end
     copyto!(A.nzval, B.nzval)
     return A
@@ -2309,9 +2309,9 @@ getindex(A::SparseArrayCSC, ::Colon, J1::Index, J2::Index, JJ::Index...) = getin
 ## setindex!
 
 # dispatch helper for #29034
-setindex!(A::SparseArrayCSC, _v, I::Integer...) = _setindex_scalar!(A, _v, I)
+setindex!(A::SparseArrayCSC{Tv,Ti,N}, _v, I::Vararg{Integer,N}) where {Tv,Ti,N} = _setindex_scalar!(A, _v, Tuple(I))
 
-function _setindex_scalar!(A::SparseArrayCSC{Tv,Ti}, _v, I::TT) where {Tv,Ti<:Integer,TT<:NTuple{N,Integer} where N}
+function _setindex_scalar!(A::SparseArrayCSC{Tv,Ti,N}, _v, I::TT) where {N,Tv,Ti<:Integer,TT<:NTuple{N,Integer}}
     checkbounds(A, I...)
     v = convert(Tv, _v)
     i = convert(Ti, I[1])
@@ -2336,7 +2336,7 @@ function _setindex_scalar!(A::SparseArrayCSC{Tv,Ti}, _v, I::TT) where {Tv,Ti<:In
     return A
 end
 
-function Base.fill!(V::SubArray{Tv, <:Any, <:SparseArrayCSC{Tv,Ti,N}, Tuple{Vararg{Union{Integer, AbstractVector{<:Integer}},N}}}, x) where {Tv,Ti,N}
+function Base.fill!(V::SubArray{Tv, <:Any, <:SparseArrayCSC{Tv,Ti,N}, NTuple{N, Union{Integer, AbstractVector{<:Integer}}}}, x) where {Tv,Ti,N}
     A = V.parent
     II = V.indices
     any(isempty.(II)) && return A
@@ -2506,9 +2506,13 @@ end
 _to_same_csc(::SparseArrayCSC{Tv, Ti, N}, V::AbstractArray{Tv2, N}, I...) where {Tv,Tv2,Ti,N} = convert(SparseArrayCSC{Tv,Ti,N}, V)
 _to_same_csc(::SparseArrayCSC{Tv, Ti, N}, V::AbstractVector, I...) where {Tv,Ti,N} = convert(SparseArrayCSC{Tv,Ti,N}, reshape(V, length.(I)))
 
-setindex!(A::SparseArrayCSC{Tv}, B::AbstractArray, I::Integer...) where {Tv} = _setindex_scalar!(A, B, I...)
+setindex!(A::SparseArrayCSC{Tv,Ti,N}, B::AbstractArray{Tv2,N}, I::Vararg{Integer,N}) where {Tv,Tv2,Ti,N} = _setindex_scalar!(A, B, NTuple{N}(I))
 
-function setindex!(A::SparseArrayCSC{Tv,Ti}, V::AbstractVecOrMat, Ix::Union{Integer, AbstractVector{<:Integer}, Colon}, Jx::Union{Integer, AbstractVector{<:Integer}, Colon}) where {Tv,Ti<:Integer}
+setindex!(A::SparseArrayCSC{Tv,Ti}, V::AbstractVecOrMat, i::Integer, j::Integer) where {Tv,Ti} = _setindex_helper!(A, V, i, j)
+
+setindex!(A::SparseArrayCSC{Tv,Ti}, V::AbstractVecOrMat, Ix::Union{Integer, AbstractVector{<:Integer}, Colon}, Jx::Union{Integer, AbstractVector{<:Integer}, Colon}) where {Tv,Ti<:Integer} = _setindex_helper!(A, V, Ix, Jx)
+
+function _setindex_helper!(A::SparseArrayCSC{Tv,Ti}, V::AbstractVecOrMat, Ix::Union{Integer, AbstractVector{<:Integer}, Colon}, Jx::Union{Integer, AbstractVector{<:Integer}, Colon}) where {Tv,Ti<:Integer}
     require_one_based_indexing(A, V, Ix, Jx)
     (I, J) = Base.ensure_indexable(to_indices(A, (Ix, Jx)))
     checkbounds(A, I, J)
