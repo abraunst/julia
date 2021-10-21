@@ -1281,7 +1281,7 @@ function _binarymap_mode_1!(f::Function, mx::Int, my::Int,
         jy = ynzind[iy]
         if jx == jy
             v = f(xnzval[ix], ynzval[iy])
-            if v != zero(v)
+            if !iszero(v)
                 ir += 1; rind[ir] = jx; rval[ir] = v
             end
             ix += 1; iy += 1
@@ -1319,7 +1319,7 @@ function _binarymap_mode_2!(f::Function, mx::Int, my::Int,
         jy = ynzind[iy]
         if jx == jy
             v = f(xnzval[ix], ynzval[iy])
-            if v != zero(v)
+            if !iszero(v)
                 ir += 1; rind[ir] = jx; rval[ir] = v
             end
             ix += 1; iy += 1
@@ -1331,7 +1331,7 @@ function _binarymap_mode_2!(f::Function, mx::Int, my::Int,
             ix += 1
         else
             v = f(zero(Tx), ynzval[iy])
-            if v != zero(v)
+            if !iszero(v)
                 ir += 1; rind[ir] = jy; rval[ir] = v
             end
             iy += 1
@@ -1339,14 +1339,14 @@ function _binarymap_mode_2!(f::Function, mx::Int, my::Int,
     end
     @inbounds while ix <= mx
         v = f(xnzval[ix], zero(Ty))
-        if v != zero(v)
+        if !iszero(v)
             ir += 1; rind[ir] = xnzind[ix]; rval[ir] = v
         end
         ix += 1
     end
     @inbounds while iy <= my
         v = f(zero(Tx), ynzval[iy])
-        if v != zero(v)
+        if !iszero(v)
             ir += 1; rind[ir] = ynzind[iy]; rval[ir] = v
         end
         iy += 1
