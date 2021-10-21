@@ -1520,4 +1520,13 @@ end
     end
 end
 
+@testset "do not rely on zero(::T) in sparse vector #42730" begin
+    struct T end
+    Base.:+(x::T, y::T) = T()
+    Base.zero(::Type{T}) = T()
+    Base.iszero(::T) = true
+    x = sparsevec([2], [T()])
+    @test x+x == x
+end
+
 end # module
